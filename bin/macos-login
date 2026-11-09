@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+# macos-login — configura a tela de login estilo macOS (nody-greeter / LightDM).
+# Não precisa de sudo: a pasta /var/lib/macos-login pertence ao seu usuário.
+set -euo pipefail
+
+DIR=${MACOS_LOGIN_DIR:-/var/lib/macos-login}     # variável só para testes
+SETTINGS="$DIR/settings"
+AUTOSTART=${MACOS_LOGIN_AUTOSTART:-$HOME/.config/autostart/macos-login-sync.desktop}
+PY=/usr/bin/python3
+
+# Valores padrão (sobrescritos pelo arquivo settings)
+BACKGROUND="" BLUR=0 DIM=0.12 CLOCK24H=true NAME="" SYNC=off SCALE=80
+# shellcheck disable=SC1090
+[[ -r $SETTINGS ]] && . "$SETTINGS"
+
+die()  { echo "macos-login: $*" >&2; exit 1; }
+info() { echo "  $*"; }
+
+need_dir() {
+  [[ -d $DIR && -w $DIR ]] || die "a pasta $DIR não existe ou não é sua. Rode o install.sh primeiro."
+}
+
+save() {
+  need_dir
+  {
+    printf 'BACKGROUND=%q\n' "$BACKGROUND"
+    printf 'BLUR=%q\n' "$BLUR"
+    printf 'DIM=%q\n' "$DIM"
+    printf 'CLOCK24H=%q\n' "$CLOCK24H"
+    printf 'NAME=%q\n' "$NAME"
+    printf 'SYNC=%q\n' "$SYNC"
+    printf 'SCALE=%q\n' "$SCALE"
+  } > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+
+  # config.js lido pelo tema (gerado com json.dumps para escapar tudo corretamente)
+  BACKGROUND="$BACKGROUND" BLUR="$BLUR" DIM="$DIM" CLOCK24H="$CLOCK24H" NAME="$NAME" SCALE="$SCALE" USER_NAME="$USER" \
+  "$PY" -I -c '
+import json, os
+e = os.environ
+cfg = {
+    "background": e["BACKGROUND"],
+    "blur": int(e["BLUR"]),
+    "dim": float(e["DIM"]),
+    "clock24h": e["CLOCK24H"] == "true",
+    "scale": int(e["SCALE"]),
+    "names": {e["USER_NAME"]: e["NAME"]} if e["NAME"] else {},
+}
+print("window.MACOS_LOGIN = " + json.dumps(cfg, ensure_ascii=False) + ";")
+' > "$DIR/config.js.tmp" && mv "$DIR/config.js.tmp" "$DIR/config.js"
+  chmod 644 "$SETTINGS" "$DIR/config.js"
+}
+
+# Copia uma imagem para a pasta do greeter (o greeter não consegue ler a sua home)
+copy_image() {
+  local src=$1 ext mime
+  [[ -f $src ]] || die "arquivo não encontrado: $src"
+  mime=$(file -bL --mime-type "$src")
+  [[ $mime == image/* ]] || die "não parece uma imagem ($mime): $src"
+  ext=${src##*.}; ext=${ext,,}
+  [[ $ext =~ ^(jpe?g|png|webp)$ ]] || ext=jpg
+  need_dir
+  rm -f "$DIR"/wallpaper.*
+  cp -f "$src" "$DIR/wallpaper.$ext"
+  chmod 644 "$DIR/wallpaper.$ext"
+  BACKGROUND="wallpaper.$ext"
+}
+
+desktop_wallpaper() {
+  local uri path
+  uri=$(gsettings get org.cinnamon.desktop.background picture-uri 2>/dev/null | sed "s/^'//; s/'$//")
+  [[ $uri == file://* ]] || return 1
+  path=${uri#file://}
+  path=$(printf '%b' "${path//%/\\x}")   # decodifica %20 etc.
+  [[ -f $path ]] || return 1
+  printf '%s' "$path"
+}
+
+sync_desktop() {
+  local p
+  p=$(desktop_wallpaper) || die "não consegui descobrir o papel de parede da área de trabalho."
+  copy_image "$p"
+  save
+}
+
+watch_desktop() {
+  # Uma única instância por sessão
+  exec 9>"${XDG_RUNTIME_DIR:-/tmp}/macos-login-watch.lock"
+  flock -n 9 || exit 0
+  sync_desktop || true
+  gsettings monitor org.cinnamon.desktop.background picture-uri | while read -r _; do
+    sleep 1
+    ( sync_desktop ) || true
+  done
+}
+
+set_sync() {
+  case $1 in
+    on)
+      SYNC=on
+      mkdir -p "$(dirname "$AUTOSTART")"
+      cat > "$AUTOSTART" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Sincronizar fundo da tela de login
+Comment=Usa o papel de parede da área de trabalho na tela de login
+Exec=$(command -v macos-login || echo /usr/local/bin/macos-login) watch
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
+EOF
+      sync_desktop
+      if [[ ${2:-} != --sem-iniciar && -n ${DISPLAY:-} ]]; then
+        setsid "$0" watch >/dev/null 2>&1 < /dev/null &
+      fi
+      info "Sincronização ligada: a tela de login acompanha o papel de parede da área de trabalho."
+      ;;
+    off)
+      SYNC=off
+      rm -f "$AUTOSTART"
+      pkill -f "macos-login watch" 2>/dev/null || true
+      save
+      info "Sincronização desligada: a imagem atual fica fixa."
+      ;;
+    *) die "use: macos-login sincronizar on|off" ;;
+  esac
+}
+
+set_photo() {
+  local src=$1 mime
+  [[ -f $src ]] || die "arquivo não encontrado: $src"
+  mime=$(file -bL --mime-type "$src")
+  [[ $mime == image/* ]] || die "não parece uma imagem ($mime): $src"
+  src=$(readlink -f "$src")
+  # O AccountsService copia a foto para /var/lib/AccountsService/icons (o LightDM lê de lá)
+  gdbus call --system --dest org.freedesktop.Accounts \
+    --object-path "/org/freedesktop/Accounts/User$(id -u)" \
+    --method org.freedesktop.Accounts.User.SetIconFile "$src" >/dev/null
+  info "Foto atualizada."
+}
+
+status() {
+  echo "Tela de login estilo macOS"
+  info "Imagem:          ${BACKGROUND:-(padrão do tema)}"
+  info "Sincronizar com a área de trabalho: $SYNC"
+  info "Desfoque:        ${BLUR}px"
+  info "Escurecimento:   $DIM"
+  info "Relógio:         $([[ $CLOCK24H == true ]] && echo 24h || echo 12h)"
+  info "Tamanho:         ${SCALE}%"
+  info "Nome exibido:    ${NAME:-(nome do sistema)}"
+  info "Pasta:           $DIR"
+}
+
+usage() {
+  cat <<'EOF'
+Uso: macos-login <comando> [valor]
+
+  status                     mostra a configuração atual
+  imagem <arquivo>           usa esta imagem de fundo (desliga a sincronização)
+  desktop                    copia o papel de parede atual da área de trabalho (uma vez)
+  sincronizar on|off         acompanhar automaticamente o papel de parede da área de trabalho
+  desfoque <0-80>            desfoque do fundo em pixels (0 = nítido)
+  escurecer <0-0.8>          escurece o fundo para dar contraste (padrão 0.12)
+  relogio 24|12              formato do relógio
+  tamanho <50-150>           tamanho do relógio, foto e textos, em % (padrão 80)
+  nome "Seu Nome"            nome exibido abaixo da foto ("" volta ao do sistema)
+  foto <arquivo>             foto do usuário (círculo acima do nome)
+  testar                     abre a tela de login numa janela, para conferir (não faz login)
+EOF
+}
+
+cmd=${1:-}
+case $cmd in
+  status|"") status ;;
+  imagem)      [[ -n ${2:-} ]] || die "informe o arquivo"; copy_image "$2"
+               if [[ $SYNC == on ]]; then set_sync off >/dev/null; fi
+               SYNC=off; save; info "Imagem definida: $2" ;;
+  desktop)     sync_desktop; info "Papel de parede copiado." ;;
+  sincronizar) set_sync "${2:-}" "${3:-}" ;;
+  desfoque)    [[ ${2:-} =~ ^[0-9]+$ && $2 -le 80 ]] || die "use um número de 0 a 80"; BLUR=$2; save; info "Desfoque: ${BLUR}px" ;;
+  escurecer)   [[ ${2:-} =~ ^0(\.[0-9]+)?$ ]] && "$PY" -I -c "import sys; sys.exit(0 if float('$2') <= 0.8 else 1)" \
+                 || die "use um valor de 0 a 0.8"; DIM=$2; save; info "Escurecimento: $DIM" ;;
+  relogio)     case ${2:-} in 24) CLOCK24H=true ;; 12) CLOCK24H=false ;; *) die "use 24 ou 12" ;; esac; save; info "Relógio: ${2}h" ;;
+  tamanho)     [[ ${2:-} =~ ^[0-9]+$ && $2 -ge 50 && $2 -le 150 ]] || die "use um número de 50 a 150"
+               SCALE=$2; save; info "Tamanho: ${SCALE}%" ;;
+  nome)        NAME=${2:-}; save; info "Nome: ${NAME:-(nome do sistema)}" ;;
+  foto)        [[ -n ${2:-} ]] || die "informe o arquivo"; set_photo "$2" ;;
+  watch)       watch_desktop ;;
+  testar)      command -v nody-greeter >/dev/null || die "nody-greeter não instalado"
+               nody-greeter --mode debug --theme macos ;;
+  -h|--help|help) usage ;;
+  *) usage; exit 1 ;;
+esac

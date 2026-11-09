@@ -1,0 +1,29 @@
+#!/bin/sh
+# Executado pelo LightDM (como root) antes de mostrar a tela de login.
+# Deixa só o monitor principal ligado, para o login não ficar dividido entre duas telas.
+
+# Mantém o comportamento original do Mint com NVIDIA (PRIME)
+if [ -x /sbin/prime-offload ]; then
+    /sbin/prime-offload || true
+fi
+
+PRIMARY_OUTPUT=DP-0
+TURN_OFF_OTHERS=yes
+[ -r /etc/default/macos-login ] && . /etc/default/macos-login
+
+command -v xrandr >/dev/null 2>&1 || exit 0
+
+connected=$(xrandr --query | awk '$2 == "connected" { print $1 }')
+
+# Se o monitor principal não estiver conectado, não mexe em nada
+echo "$connected" | grep -qx "$PRIMARY_OUTPUT" || exit 0
+
+xrandr --output "$PRIMARY_OUTPUT" --auto --primary || true
+
+if [ "$TURN_OFF_OTHERS" = "yes" ]; then
+    for out in $connected; do
+        [ "$out" = "$PRIMARY_OUTPUT" ] || xrandr --output "$out" --off || true
+    done
+fi
+
+exit 0

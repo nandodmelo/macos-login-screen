@@ -1,0 +1,253 @@
+/* ===== Tela de login estilo macOS ===== */
+
+/* Tudo é medido em rem e o rem acompanha a tela: fica igual em 1080p e em 4K.
+   --scale é o "tamanho" (macos-login tamanho 80 → 0.8). */
+:root { --scale: 0.8; }
+html { font-size: calc(100vmin / 54 * var(--scale)); }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #1c1c1e;
+  color: #fff;
+  font-family: "SF Pro Display", "SF Pro", "Inter", "Ubuntu Sans", "Noto Sans", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+  transition: opacity 0.9s ease;
+}
+body.leaving { opacity: 0; }
+
+/* Papel de parede (sem imagem: degradê no estilo dos fundos do macOS) */
+.bg {
+  position: fixed;
+  inset: -40px;          /* sobra para o desfoque não deixar borda clara */
+  background:
+    radial-gradient(120% 90% at 15% 10%, #3b5bdb 0%, transparent 55%),
+    radial-gradient(110% 90% at 85% 20%, #c2255c 0%, transparent 55%),
+    radial-gradient(120% 100% at 50% 100%, #5f3dc4 0%, #1b1035 70%);
+  background-size: cover;
+  background-position: center;
+  transform: scale(1);
+  transition: filter 0.6s ease, opacity 0.6s ease;
+  opacity: 0;
+}
+.bg.ready { opacity: 1; }
+.dim {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  opacity: 0.12;
+  pointer-events: none;
+}
+
+#screen {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ---------- Relógio ---------- */
+#clock {
+  margin-top: 6.5vh;
+  text-align: center;
+  text-shadow: 0 0.05rem 0.6rem rgba(0, 0, 0, 0.18);
+}
+#date {
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.88);
+}
+#time {
+  font-size: 6.6rem;
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  color: rgba(255, 255, 255, 0.86);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Usuário e senha ---------- */
+#login {
+  position: absolute;
+  bottom: 37vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.avatar {
+  position: relative;
+  width: 3.7rem;
+  height: 3.7rem;
+  border-radius: 50%;
+  border: none;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #a1a1a6, #6e6e73);
+  box-shadow: 0 0.15rem 0.9rem rgba(0, 0, 0, 0.3);
+  color: #fff;
+  cursor: default;
+}
+.avatar.many { cursor: pointer; }
+.avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: none;
+}
+.avatar img.ok { display: block; }
+#avatar-initials {
+  font-size: 1.45rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+#username {
+  margin-top: 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-shadow: 0 0.05rem 0.4rem rgba(0, 0, 0, 0.35);
+}
+
+#pass-form { margin-top: 0.75rem; }
+
+.field {
+  position: relative;
+  width: 9.6rem;
+  height: 1.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
+  box-shadow: 0 0.1rem 0.6rem rgba(0, 0, 0, 0.12);
+  transition: background 0.2s ease;
+}
+.field:focus-within { background: rgba(255, 255, 255, 0.26); }
+
+#password {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 0.62rem;
+  padding: 0 2.6rem 0 0.75rem;
+  letter-spacing: 0.04em;
+  caret-color: #fff;
+}
+#password::placeholder { color: rgba(255, 255, 255, 0.62); letter-spacing: 0; }
+#password[type="password"] { letter-spacing: 0.18em; }
+
+.submit {
+  position: absolute;
+  right: 0.18rem;
+  top: 50%;
+  width: 1.17rem;
+  height: 1.17rem;
+  transform: translateY(-50%) scale(0.6);
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  cursor: pointer;
+}
+.submit svg { width: 0.62rem; height: 0.62rem; }
+.field.has-text .submit { opacity: 1; pointer-events: auto; transform: translateY(-50%) scale(1); }
+.submit:hover { background: rgba(255, 255, 255, 0.32); }
+
+.caps {
+  position: absolute;
+  right: 1.55rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0.62rem;
+  height: 0.62rem;
+  color: rgba(255, 255, 255, 0.75);
+  display: none;
+}
+.caps svg { width: 100%; height: 100%; }
+.caps.on { display: block; }
+
+.message {
+  min-height: 1rem;
+  margin-top: 0.55rem;
+  font-size: 0.55rem;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 0.05rem 0.4rem rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.message.show { opacity: 1; }
+
+/* Senha errada: o "chacoalhar" do macOS */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  15%, 55% { transform: translateX(-0.55rem); }
+  35%, 75% { transform: translateX(0.55rem); }
+  90%      { transform: translateX(-0.2rem); }
+}
+#pass-form.shake { animation: shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97); }
+
+/* Autenticando */
+#pass-form.busy .field { opacity: 0.7; }
+
+/* ---------- Botões de energia ---------- */
+#power {
+  position: absolute;
+  bottom: 4.2vh;
+  display: flex;
+  gap: 1.9rem;
+}
+.power-btn {
+  border: none;
+  background: none;
+  color: #fff;
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.32rem;
+  cursor: pointer;
+}
+.power-btn.hidden { display: none; }
+.power-icon {
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  transition: background 0.15s ease;
+}
+.power-icon svg { width: 0.72rem; height: 0.72rem; }
+.power-btn:hover .power-icon { background: rgba(255, 255, 255, 0.3); }
+.power-label {
+  font-size: 0.5rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.88);
+  text-shadow: 0 0.05rem 0.4rem rgba(0, 0, 0, 0.4);
+}

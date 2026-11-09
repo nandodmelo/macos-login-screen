@@ -1,0 +1,7 @@
+# Configuração da tela de login estilo macOS (lida pelo macos-login-display-setup)
+
+# Monitor onde aparece o login (nome do xrandr; veja com: xrandr | grep " connected")
+PRIMARY_OUTPUT=DP-0
+
+# Desligar as outras telas enquanto a tela de login estiver aberta (yes/no)
+TURN_OFF_OTHERS=yes
